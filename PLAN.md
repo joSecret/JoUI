@@ -1,7 +1,7 @@
 # JoUI: plan de lucru (bibliotecă + documentație + server MCP)
 
 > Document viu. Îl completăm împreună pe parcurs. Bifează `[x]` ce e gata.
-> Versiunea planului: 0.4 · 28 septembrie 2026 (fără tokens.json; fluxul design → site Astro → Drupal)
+> Versiunea planului: 0.6 (structura v2 + clase după standardul Drupal, de confirmat) · 28 septembrie 2026 (fără tokens.json; fluxul design → site Astro → Drupal)
 
 ---
 
@@ -41,108 +41,121 @@ Ordinea pașilor contează: **fiecare pas se sprijină pe cel dinainte.** MCP-ul
 
 **Scop:** oricine (om sau AI) să găsească orice componentă în același fel, fără să ghicească.
 
-### 1.1 Structura propusă (monorepo)
+### 1.1 Structura propusă (v2: după astrodeck + oat)
 
-Un singur repo `joui`, cu npm workspaces. Nucleul (`core`) e HTML/CSS/JS simplu, **fără Tailwind sau alt framework**, ca să poată fi folosit oriunde (Astro, Drupal, Laravel, HTML static). Platformele sunt doar „ambalaje” peste nucleu.
+> Propunere, de confirmat. Ia de la **astrodeck** organizarea pe trei niveluri și partea pentru AI, și de la **oat** felul în care sunt făcute componentele (HTML semantic, CSS pe elemente native, JS minim). Fără Tailwind, React sau Radix (astrodeck le folosește, noi nu).
 
 ```
 joui/
-├── README.md
-├── GUIDELINES.md             # regulile (Pasul 2)
-├── CHANGELOG.md
-├── package.json              # workspaces + scripturi (validate, build)
+├── AGENTS.md              # regulile pentru ORICE AI (Claude, Cursor, Copilot…): sursa unică
+├── CLAUDE.md              # o linie: „citește AGENTS.md”
+├── README.md · PLAN.md · CHANGELOG.md · LICENSE
+├── package.json           # scripturi: build, validate
 │
-├── packages/
-│   ├── core/                 # SURSA: HTML/CSS/JS simplu, fără dependențe
-│   │   ├── tokens/tokens.css # toate variabilele CSS, grupate pe categorii
-│   │   ├── base/             # reset.css, layout.css
-│   │   └── components/
-│   │       ├── card/         # card.html, card.css, card.md, card.json (+ card.js doar dacă e nevoie)
-│   │       └── accordion/ ...
-│   │
-│   ├── astro/                # componentele .astro (Card.astro …), folosesc CSS-ul din core
-│   ├── drupal/               # componentele SDC (card/card.component.yml, card.html.twig)
-│   ├── laravel/              # mai târziu: componente Blade, dacă e cazul
-│   └── mcp/                  # serverul MCP (Pasul 5)
+├── src/                   # NUCLEUL, ca oat: HTML/CSS/JS simplu, zero dependențe
+│   ├── css/
+│   │   ├── 00-base.css    # reset + stiluri pe elemente native (h1…, a, button, input…)
+│   │   ├── 01-tokens.css  # toate variabilele, cu light-dark() pentru dark mode
+│   │   └── utilities.css  # puține clase utilitare (stack, grid…)
+│   ├── components/        # NIVELUL 1: primitive (button, dialog, accordion, tabs, card…)
+│   │   └── dialog/
+│   │       ├── dialog.css # stilul, în @layer components
+│   │       ├── dialog.md  # documentație + exemple HTML (demo) + metadate în frontmatter
+│   │       └── dialog.js  # DOAR dacă e nevoie (web component mic)
+│   └── sections/          # NIVELUL 2: secțiuni din componente (hero, pricing, faq, footer…)
+│       └── faq/
+│           ├── faq.css
+│           └── faq.md
 │
-├── apps/
-│   └── docs/                 # site-ul de documentație (Astro), construit CU JoUI
+├── dist/                  # generat: joui.css + joui.js (un singur <link> și <script>)
+│                          # → merge oriunde: HTML static, Laravel, Drupal, Astro
 │
-├── starters/
-│   └── astro-site/           # șablonul de site nou pe care îl copiază create_site
+├── site/                  # NIVELUL 3, ca astrodeck: starter Astro + demo + documentație
+│   ├── src/components/    # .astro peste nucleu (Dialog.astro, Faq.astro…)
+│   ├── src/layouts/
+│   ├── src/pages/         # pagini-șablon (landing, despre, contact…) + paginile de documentație
+│   └── PROJECT.md         # suprascrierile unui site anume (brand, ton, reguli)
 │
-├── schema/component.schema.json
-└── scripts/                  # build-catalog.mjs, validate.mjs
+├── drupal/                # temă Drupal cu componente SDC (.component.yml + .html.twig)
+├── mcp/                   # serverul MCP
+│
+├── registry.json          # generat: catalogul pentru AI și MCP (ca astrodeck)
+├── public/llms.txt        # generat: documentația citibilă de AI
+│
+└── .claude/
+    ├── commands/          # /new-component, /new-section, /theme, /to-drupal
+    └── hooks/             # gardian: blochează culori fixe în afara tokenilor, Tailwind etc.
 ```
 
-De ce un singur repo: o schimbare la o componentă (HTML/CSS + Astro + Drupal) intră într-un singur PR, se verifică împreună și are o singură versiune. Dacă mai târziu vrei pachete separate pe npm, le publici din același repo.
+Ce se schimbă față de v1:
+- **Trei niveluri** (componente → secțiuni → pagini), ca la astrodeck. Pentru fluxul „design → site” contează mult: AI-ul potrivește întâi secțiuni întregi (hero, pricing), nu doar butoane.
+- **Site-ul Astro e și starter, și documentație** (ca astrodeck). `create_site` copiază folderul `site/`. Nu mai e nevoie de `apps/docs` și `starters/` separate.
+- **Componentele ca oat** (elemente native, JS minim), dar **cu clase după standardul Drupal** (BEM). Stratul `base` stilizează elementele simple fără clase; componentele au clase. Același HTML merge identic în Astro, Drupal și Laravel.
+- **Mai puține fișiere per componentă**: `.css` + `.md` (+ `.js` opțional). Exemplele HTML stau în `.md`, iar metadatele (props, slots, tokeni) în frontmatter-ul lui `.md`. Fără `.html` și `.json` separate.
+- **`AGENTS.md` + `PROJECT.md`** (ca astrodeck): reguli comune pentru orice AI + suprascrieri pe site. `CLAUDE.md` doar trimite la `AGENTS.md`.
+- **`dist/joui.css` + `joui.js`**: un singur fișier de inclus, ca la oat.
 
-### 1.2 Convenții de nume
+### 1.2 Cum arată o componentă (exemplu: dialog)
 
-- Folderul componentei: `kebab-case` (`card`, `nav-bar`, `media-object`).
-- Clasele CSS: prefix `joui-` + BEM ușor: `.joui-card`, `.joui-card__title`, `.joui-card--featured`.
-- Tokenii: `--joui-<categorie>-<rol>-<variantă>`, de ex. `--joui-color-surface`, `--joui-space-3`, `--joui-radius-md`.
-- Fiecare componentă are **exact aceleași 4 fișiere**. Fără excepții, ca scripturile să nu aibă cazuri speciale.
+`src/components/dialog/dialog.md`:
 
-### 1.3 Schema `card.json` (metadatele unei componente)
+````markdown
+---
+name: dialog
+title: Dialog
+tier: component          # component | section
+status: stable
+version: 1.0.0
+js: none                 # none | progressive | required
+tokens: [--color-surface, --color-border, --radius-lg, --shadow-lg]
+slots:
+  header: { required: false }
+  body:   { required: true }
+  footer: { required: false }
+props:
+  id:       { type: string, required: true }
+  closedby: { type: enum, values: [any, closerequest, none], default: any }
+---
 
-Acesta e fișierul cel mai important pentru automatizare. Din el se generează site-ul, catalogul și răspunsurile MCP.
+Dialog modal pe `<dialog>` nativ. Se deschide cu `commandfor` + `command="show-modal"`, fără JS.
 
-```json
-{
-  "$schema": "../../schema/component.schema.json",
-  "name": "card",
-  "title": "Card",
-  "version": "1.0.0",
-  "status": "stable",
-  "category": "content",
-  "description": "Container pentru un conținut scurt: imagine, titlu, text, acțiune.",
-  "tags": ["container", "teaser", "listă"],
+```html demo
+<button commandfor="d1" command="show-modal">Deschide</button>
+<dialog class="dialog" id="d1" closedby="any">
+  <form method="dialog">
+    <header><h3>Titlu</h3></header>
+    <div><p>Conținut.</p></div>
+    <footer><button value="ok">OK</button></footer>
+  </form>
+</dialog>
+```
 
-  "slots": [
-    { "name": "media",   "required": false, "description": "Imagine sau video în partea de sus." },
-    { "name": "title",   "required": true,  "description": "Titlul cardului (h2–h4, după context)." },
-    { "name": "body",    "required": false, "description": "Text scurt." },
-    { "name": "actions", "required": false, "description": "Linkuri sau butoane." }
-  ],
+## Accesibilitate
+- Focus-ul, Escape și fundalul funcționează nativ.
+````
 
-  "props": [
-    { "name": "variant",  "type": "enum", "values": ["default", "featured", "compact"], "default": "default",
-      "description": "Varianta vizuală; se aplică prin clasa joui-card--<variant>." },
-    { "name": "href",     "type": "string", "required": false,
-      "description": "Dacă există, tot cardul devine link." }
-  ],
+`src/components/dialog/dialog.css`:
 
-  "tokens": [
-    "--joui-color-surface", "--joui-color-border",
-    "--joui-space-3", "--joui-space-4", "--joui-radius-md"
-  ],
-
-  "dependencies": [],
-  "js": "none",
-  "a11y": [
-    "Titlul folosește nivelul corect de heading în pagină.",
-    "Dacă tot cardul e link, doar titlul are text de link; restul nu se duplică."
-  ],
-
-  "platforms": {
-    "drupal": { "status": "done", "path": "packages/drupal/card" },
-    "astro":  { "status": "done", "path": "packages/astro/Card.astro" }
+```css
+@layer components {
+  .dialog {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
   }
+  .dialog::backdrop { background: rgb(0 0 0 / .5); }
 }
 ```
 
-Explicații rapide:
-- `status`: `draft` | `beta` | `stable` | `deprecated`. AI-ul și site-ul pot ascunde ce e `draft`.
-- `slots` = zonele de conținut (în Drupal devin `slots` în SDC, în Astro devin `<slot name="...">`).
-- `props` = opțiunile (în Drupal devin `props` în SDC, în Astro devin `Astro.props`).
-- `tokens` = ce variabile folosește componenta. Scriptul de validare verifică să fie adevărat.
-- `js`: `none` | `progressive` (merge și fără JS) | `required`. Obiectivul JoUI e `none` cât mai des.
+### 1.3 Convenții
+
+Detaliate în [`CONVENTII.md`](CONVENTII.md): clase după standardul Drupal (SMACSS + BEM: `.card`, `.card__title`, `.card--featured`, `.is-*`, `.js-*`), `@layer tokens, base, layout, components, state, utilities`, tokeni `--color-*`, `--space-*`, echivalența Astro ↔ Drupal SDC și structura documentației fiecărei componente.
 
 ### 1.4 Checklist Pasul 1
 
 - [ ] Creez repo-ul (sau reorganizez pe cel existent) după structura de mai sus.
-- [ ] Mut tokenii existenți în `tokens/tokens.css`, cu prefixul `--joui-`.
+- [ ] Mut tokenii existenți în `src/css/01-tokens.css` (`--color-*`, `--space-*`…).
 - [ ] Grupez tokenii în `tokens.css` pe categorii, cu un comentariu deasupra fiecărui grup (`/* @category color */`); scriptul de build citește categoriile din comentarii.
 - [ ] Aleg **3–4 componente reale** pe care le am deja (recomandare: `button`, `card`, `accordion` cu `<details>`, `nav`).
 - [ ] Pentru fiecare: `.html`, `.css`, `.md`, `.json`.
@@ -165,7 +178,7 @@ Explicații rapide:
    - Accesibil implicit (contrast, focus vizibil, ordine logică).
 2. **Tokeni**: categoriile, cum se numesc, când creezi un token nou și când nu.
 3. **HTML**: elemente permise/preferate, headings, linkuri vs. butoane, imagini (`alt`, `loading`).
-4. **CSS**: prefix `joui-`, BEM, fără `!important`, fără ID-uri, specificitate mică, `@layer` (dacă îl folosești), media/container queries.
+4. **CSS**: BEM după standardul Drupal (vezi CONVENTII.md), fără `!important`, fără ID-uri, specificitate mică, `@layer` (dacă îl folosești), media/container queries.
 5. **JS**: când e permis, cum se adaugă progresiv.
 6. **Accesibilitate**: minimul obligatoriu pentru orice componentă.
 7. **Platforme**:
@@ -227,7 +240,7 @@ La fiecare build, `scripts/build-catalog.mjs` produce `dist/joui.json`, care se 
   "version": "0.3.0",
   "guidelinesVersion": "1.0",
   "generatedAt": "2026-10-01T10:00:00Z",
-  "tokens": [ { "name": "--joui-color-surface", "value": "#fff", "category": "color" } ],
+  "tokens": [ { "name": "--color-surface", "value": "#fff", "category": "color" } ],
   "components": [ { "...": "conținutul fiecărui card.json + html + css + md" } ],
   "guidelines": "…textul complet din GUIDELINES.md…"
 }
@@ -332,7 +345,7 @@ De ce merge conversia ușor: în Astro și în Drupal **HTML-ul și CSS-ul sunt 
 | `create_site` | Creează proiectul Astro de start cu toate componentele JoUI și tokenii de bază. |
 | `get_guidelines` | Ghidul complet sau o secțiune. |
 | `get_platform_template` | Modelul pentru `astro` sau `drupal`. |
-| `validate_component` | Verifică HTML/CSS generat după reguli (prefix `joui-`, doar tokeni, fără ID-uri, `alt` la imagini…) și spune ce regulă e încălcată. |
+| `validate_component` | Verifică HTML/CSS generat după reguli (clase BEM după standardul Drupal, doar tokeni, fără ID-uri, `alt` la imagini…) și spune ce regulă e încălcată. |
 | `convert_to_drupal` | Din `.astro` (+ `.json`) produce `.component.yml` + `.html.twig`. |
 
 **Resources:** `joui://guidelines`, `joui://tokens`, `joui://components/{name}`.
